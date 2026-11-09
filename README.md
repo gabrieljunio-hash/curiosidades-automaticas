@@ -28,7 +28,7 @@ Não coloque essas chaves nos arquivos do repositório.
 1. Abra a aba **Actions**.
 2. Escolha **Gerar 5 vídeos de curiosidades**.
 3. Clique em **Run workflow**.
-4. Informe cinco temas, um por linha.
+4. Informe cinco temas separados por ponto e vírgula (;).
 5. Execute e aguarde a conclusão.
 6. Baixe o Artifact chamado `videos-de-curiosidades`.
 
