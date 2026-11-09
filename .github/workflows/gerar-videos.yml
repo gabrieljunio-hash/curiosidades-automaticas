@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       temas:
-        description: "Informe exatamente 5 temas, um por linha"
+        description: "Informe exatamente 5 temas separados por ponto e vírgula"
         required: true
         type: string
 
