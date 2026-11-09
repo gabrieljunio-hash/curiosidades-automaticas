@@ -24,7 +24,8 @@ config = (
     'llm_provider = "gemini"\n'
     f"gemini_api_key = {json.dumps(gemini)}\n"
 )
-Path("config.toml").write_text(config, encoding="utf-8")
+Path(os.environ.get("MPT_HOME", ".mpt")).mkdir(parents=True, exist_ok=True)
+Path(os.environ.get("MPT_HOME", ".mpt"), "config.toml").write_text(config, encoding="utf-8")
 
 tasks = [{"video_subject": topic, "video_language": "pt-BR", "paragraph_number": 4} for topic in topics]
 Path("tasks.json").write_text(json.dumps(tasks, ensure_ascii=False, indent=2), encoding="utf-8")
