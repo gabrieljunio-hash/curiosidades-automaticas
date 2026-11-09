@@ -1,0 +1,119 @@
+name: Gerar 5 vídeos de curiosidades
+
+on:
+  workflow_dispatch:
+    inputs:
+      temas:
+        description: "Digite até 5 temas, um por linha (deixe vazio para usar sugestões)"
+        required: false
+        type: string
+        default: |
+          Curiosidades surpreendentes sobre o oceano
+          Mistérios do espaço que a ciência explica
+          Animais com habilidades extraordinárias
+          Lugares reais que parecem impossíveis
+          Invenções acidentais que mudaram o mundo
+
+permissions:
+  contents: read
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Instalar MoneyPrinterTurbo oficial
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install mpt
+
+      - name: Configurar chaves sem expor no repositório
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "Falta cadastrar o segredo GEMINI_API_KEY."
+            exit 1
+          fi
+          if [ -z "$PIXABAY_API_KEY" ]; then
+            echo "Falta cadastrar o segredo PIXABAY_API_KEY."
+            exit 1
+          fi
+          mkdir -p "$HOME/.local/share/MoneyPrinterTurbo"
+          cat > "$HOME/.local/share/MoneyPrinterTurbo/config.toml" <<EOF
+          [app]
+          video_source = "pixabay"
+          pixabay_api_keys = ["$PIXABAY_API_KEY"]
+          llm_provider = "gemini"
+          gemini_api_key = "$GEMINI_API_KEY"
+
+          [ui]
+          subtitle_provider = "edge"
+          voice_name = "pt-BR-AntonioNeural"
+          EOF
+
+      - name: Gerar vídeos
+        env:
+          TEMAS: ${{ inputs.temas }}
+          MPT_HOME: ${{ github.workspace }}/mpt-data
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        run: |
+          mkdir -p "$MPT_HOME"
+          cat > "$MPT_HOME/config.toml" <<EOF
+          [app]
+          video_source = "pixabay"
+          pixabay_api_keys = ["$PIXABAY_API_KEY"]
+          llm_provider = "gemini"
+          gemini_api_key = "$GEMINI_API_KEY"
+
+          [ui]
+          subtitle_provider = "edge"
+          voice_name = "pt-BR-AntonioNeural"
+          EOF
+
+          python - <<'PY'
+          import os, subprocess, sys
+          temas = [x.strip(" -•\t") for x in os.environ["TEMAS"].splitlines() if x.strip()]
+          if not temas:
+              raise SystemExit("Nenhum tema informado.")
+          if len(temas) > 5:
+              temas = temas[:5]
+          for i, tema in enumerate(temas, 1):
+              print(f"\\n===== Vídeo {i}/{len(temas)}: {tema} =====", flush=True)
+              cmd = [
+                  "mpt", "cli",
+                  "--video-subject", tema,
+                  "--video-language", "pt-BR",
+                  "--video-aspect", "9:16",
+                  "--video-source", "pixabay",
+                  "--video-count", "1",
+                  "--voice-name", "pt-BR-AntonioNeural",
+                  "--bgm-type", "random",
+                  "--stop-at", "video",
+              ]
+              result = subprocess.run(cmd, check=False)
+              if result.returncode:
+                  print(f"Falha ao gerar o vídeo {i}.", file=sys.stderr)
+                  sys.exit(result.returncode)
+          PY
+
+      - name: Disponibilizar vídeos para baixar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: videos-de-curiosidades
+          path: mpt-data/storage/tasks/**/final-*.mp4
+          if-no-files-found: warn
+          retention-days: 7
