@@ -1,18 +1,13 @@
-name: Gerar 5 vídeos (Gemini + Pixabay)
+name: Gerar 1 vídeo (Gemini + Pixabay)
 
 on:
   workflow_dispatch:
     inputs:
-      temas:
-        description: "Digite até 5 temas, um por linha (deixe vazio para usar sugestões)"
+      tema:
+        description: "Digite o tema do vídeo (deixe vazio para usar a sugestão)"
         required: false
         type: string
-        default: |
-          Curiosidades surpreendentes sobre o oceano
-          Mistérios do espaço que a ciência explica
-          Animais com habilidades extraordinárias
-          Lugares reais que parecem impossíveis
-          Invenções acidentais que mudaram o mundo
+        default: "Curiosidades surpreendentes sobre o oceano"
 
 permissions:
   contents: read
@@ -20,7 +15,7 @@ permissions:
 jobs:
   gerar:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 120
     steps:
       - name: Preparar Python
         uses: actions/setup-python@v5
@@ -37,7 +32,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install mpt
 
-      - name: Configurar chaves sem expor no repositório
+      - name: Conferir chaves necessárias
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
@@ -51,9 +46,9 @@ jobs:
             exit 1
           fi
 
-      - name: Gerar vídeos
+      - name: Gerar um vídeo
         env:
-          TEMAS: ${{ inputs.temas }}
+          TEMA: ${{ inputs.tema }}
           MPT_HOME: ${{ github.workspace }}/mpt-data
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
@@ -71,37 +66,23 @@ jobs:
           voice_name = "pt-BR-AntonioNeural"
           EOF
 
-          python - <<'PY'
-          import os, subprocess, sys
-          temas = [x.strip(" -•\t") for x in os.environ["TEMAS"].splitlines() if x.strip()]
-          if not temas:
-              raise SystemExit("Nenhum tema informado.")
-          if len(temas) > 5:
-              temas = temas[:5]
-          for i, tema in enumerate(temas, 1):
-              print(f"\n===== Vídeo {i}/{len(temas)}: {tema} =====", flush=True)
-              cmd = [
-                  "mpt", "cli",
-                  "--video-subject", tema,
-                  "--video-language", "pt-BR",
-                  "--video-aspect", "9:16",
-                  "--video-source", "pixabay",
-                  "--video-count", "1",
-                  "--voice-name", "pt-BR-AntonioNeural",
-                  "--bgm-type", "random",
-                  "--stop-at", "video",
-              ]
-              result = subprocess.run(cmd, check=False)
-              if result.returncode:
-                  print(f"Falha ao gerar o vídeo {i}.", file=sys.stderr)
-                  sys.exit(result.returncode)
-          PY
+          TEMA="${TEMA:-Curiosidades surpreendentes sobre o oceano}"
+          echo "Iniciando geração de um vídeo sobre: $TEMA"
+          mpt cli \
+            --video-subject "$TEMA" \
+            --video-language "pt-BR" \
+            --video-aspect "9:16" \
+            --video-source "pixabay" \
+            --video-count 1 \
+            --voice-name "pt-BR-AntonioNeural" \
+            --bgm-type random \
+            --stop-at video
 
-      - name: Disponibilizar vídeos para baixar
+      - name: Disponibilizar vídeo para baixar
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: videos-de-curiosidades
+          name: video-de-curiosidade
           path: mpt-data/storage/tasks/**/final-*.mp4
           if-no-files-found: warn
           retention-days: 7
