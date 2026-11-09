@@ -1,64 +1,98 @@
-name: Gerar 1 vídeo (Pixabay sem Gemini)
+name: Gerar 1 vídeo (tema novo + gancho + Pixabay)
 
 on:
   workflow_dispatch:
-    inputs:
-      tema:
-        description: "Tema do vídeo"
-        required: true
-        type: string
-        default: "Curiosidades surpreendentes sobre o oceano"
-      roteiro:
-        description: "Roteiro completo em português (a narração será criada a partir dele)"
-        required: true
-        type: string
-        default: "Você sabia que o oceano cobre mais de 70 por cento da superfície da Terra?\nNas partes mais profundas, a pressão é tão grande que poucos equipamentos conseguem chegar lá.\nMesmo assim, cientistas continuam descobrindo novas espécies nas profundezas.\nE existe um detalhe impressionante: conhecemos melhor a superfície da Lua do que muitas regiões do fundo do nosso próprio oceano.\nQual curiosidade sobre o mar mais surpreende você?"
-      termos:
-        description: "Palavras para buscar vídeos no Pixabay, separadas por vírgula"
-        required: true
-        type: string
-        default: "ocean, underwater, sea animals, deep sea"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: curiosidades-video
+  cancel-in-progress: false
 
 jobs:
   gerar:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
+      - name: Baixar projeto e histórico de temas
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Preparar Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Instalar FFmpeg
+      - name: Instalar FFmpeg e MoneyPrinterTurbo
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-
-      - name: Instalar MoneyPrinterTurbo
-        run: |
           python -m pip install --upgrade pip
           python -m pip install mpt
 
-      - name: Conferir chave do Pixabay
+      - name: Criar tema inédito, gancho e roteiro
         env:
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          if [ -z "$PIXABAY_API_KEY" ]; then
-            echo "Falta cadastrar o segredo PIXABAY_API_KEY em Settings > Secrets and variables > Actions."
-            exit 1
-          fi
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          from pathlib import Path
+
+          key = os.environ.get("GEMINI_API_KEY", "")
+          if not key:
+              raise SystemExit("Falta o segredo GEMINI_API_KEY.")
+          history_file = Path("temas-usados.txt")
+          history = history_file.read_text(encoding="utf-8").splitlines() if history_file.exists() else []
+          recent = history[-80:]
+          prompt = f"""Crie conteúdo para um vídeo curto de curiosidades em português brasileiro.
+          Escolha UM TEMA NOVO e diferente dos temas já usados abaixo.
+          Temas já usados (não repita nem faça variação superficial): {json.dumps(recent, ensure_ascii=False)}
+          Gere 10 ganchos curtos no estilo de um gerador profissional de TikTok, com curiosidade, surpresa e lacuna de informação.
+          Escolha o melhor gancho e escreva um roteiro narrável de 45 a 60 segundos, factual, sem inventar estatísticas, datas ou fatos duvidosos.
+          O primeiro período deve ser o gancho. Termine com uma pergunta natural para comentários.
+          Também forneça 4 a 6 termos de busca em inglês para encontrar vídeos de banco de imagens no Pixabay.
+          Responda SOMENTE JSON válido com as chaves: tema, ganchos (lista), gancho_escolhido, roteiro, termos (lista).
+          Não use markdown."""
+          body = {"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"responseMimeType":"application/json","temperature":0.9}}
+          req = urllib.request.Request(
+              "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+              data=json.dumps(body).encode(),
+              headers={"Content-Type":"application/json","x-goog-api-key":key},
+              method="POST")
+          try:
+              with urllib.request.urlopen(req, timeout=90) as response:
+                  data=json.loads(response.read())
+          except urllib.error.HTTPError as e:
+              detail=e.read().decode(errors="replace")
+              raise SystemExit(f"Gemini API respondeu HTTP {e.code}: {detail[:1200]}")
+          text=data["candidates"][0]["content"]["parts"][0]["text"]
+          result=json.loads(text)
+          for field in ("tema","gancho_escolhido","roteiro","termos"):
+              if not result.get(field):
+                  raise SystemExit(f"Gemini não retornou o campo obrigatório: {field}")
+          if result["tema"].strip().casefold() in {x.strip().casefold() for x in history}:
+              raise SystemExit("O Gemini repetiu um tema anterior. Execute novamente.")
+          Path("roteiro.txt").write_text(result["roteiro"], encoding="utf-8")
+          Path("tema.txt").write_text(result["tema"], encoding="utf-8")
+          Path("termos.txt").write_text(", ".join(result["termos"]), encoding="utf-8")
+          Path("ganchos.txt").write_text("\n".join(result.get("ganchos",[])), encoding="utf-8")
+          print("TEMA:", result["tema"])
+          print("GANCHO ESCOLHIDO:", result["gancho_escolhido"])
+          print("OUTROS GANCHOS:\n", Path("ganchos.txt").read_text())
+          print("ROTEIRO:\n", result["roteiro"])
+          PY
 
       - name: Gerar vídeo com cenas existentes do Pixabay
         env:
-          TEMA: ${{ inputs.tema }}
-          ROTEIRO: ${{ inputs.roteiro }}
-          TERMOS: ${{ inputs.termos }}
           MPT_HOME: ${{ github.workspace }}/mpt-data
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
+          if [ -z "$PIXABAY_API_KEY" ]; then
+            echo "Falta o segredo PIXABAY_API_KEY."
+            exit 1
+          fi
           mkdir -p "$MPT_HOME"
           cat > "$MPT_HOME/config.toml" <<EOF
           [app]
@@ -75,20 +109,20 @@ jobs:
           font_size = 58
           stroke_width = 2
           EOF
-
-          echo "Tema: $TEMA"
-          echo "Usando roteiro fornecido; nenhuma chamada ao Gemini será feita."
+          TEMA="$(cat tema.txt)"
+          ROTEIRO="$(cat roteiro.txt)"
+          TERMOS="$(cat termos.txt)"
           mpt cli \
             --video-subject "$TEMA" \
             --video-script "$ROTEIRO" \
             --video-terms "$TERMOS" \
-            --video-language "pt-BR" \
-            --video-aspect "9:16" \
-            --video-source "pixabay" \
+            --video-language pt-BR \
+            --video-aspect 9:16 \
+            --video-source pixabay \
             --video-count 1 \
             --video-clip-duration 4 \
             --video-fit-mode cover \
-            --voice-name "pt-BR-AntonioNeural" \
+            --voice-name pt-BR-AntonioNeural \
             --subtitle-enabled \
             --subtitle-position bottom \
             --subtitle-display-mode word_by_word \
@@ -100,13 +134,25 @@ jobs:
             --n-threads 2 \
             --stop-at video
 
-      - name: Disponibilizar vídeo para baixar
+      - name: Registrar tema para não repetir
+        if: success()
+        run: |
+          cat tema.txt >> temas-usados.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add temas-usados.txt
+          git commit -m "Registrar tema utilizado"
+          git push
+
+      - name: Disponibilizar vídeo e roteiro
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: video-de-curiosidade
           path: |
             mpt-data/storage/tasks/**/*.mp4
-            mpt-data/storage/tasks/**/*.srt
+            roteiro.txt
+            tema.txt
+            ganchos.txt
           if-no-files-found: warn
           retention-days: 7
