@@ -1,13 +1,23 @@
-name: Gerar 1 vídeo (Gemini + Pixabay)
+name: Gerar 1 vídeo (Pixabay sem Gemini)
 
 on:
   workflow_dispatch:
     inputs:
       tema:
-        description: "Digite o tema do vídeo (deixe vazio para usar a sugestão)"
-        required: false
+        description: "Tema do vídeo"
+        required: true
         type: string
         default: "Curiosidades surpreendentes sobre o oceano"
+      roteiro:
+        description: "Roteiro completo em português (a narração será criada a partir dele)"
+        required: true
+        type: string
+        default: "Você sabia que o oceano cobre mais de 70 por cento da superfície da Terra?\nNas partes mais profundas, a pressão é tão grande que poucos equipamentos conseguem chegar lá.\nMesmo assim, cientistas continuam descobrindo novas espécies nas profundezas.\nE existe um detalhe impressionante: conhecemos melhor a superfície da Lua do que muitas regiões do fundo do nosso próprio oceano.\nQual curiosidade sobre o mar mais surpreende você?"
+      termos:
+        description: "Palavras para buscar vídeos no Pixabay, separadas por vírgula"
+        required: true
+        type: string
+        default: "ocean, underwater, sea animals, deep sea"
 
 permissions:
   contents: read
@@ -27,30 +37,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Instalar MoneyPrinterTurbo oficial
+      - name: Instalar MoneyPrinterTurbo
         run: |
           python -m pip install --upgrade pip
           python -m pip install mpt
 
-      - name: Conferir chaves necessárias
+      - name: Conferir chave do Pixabay
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "Falta cadastrar o segredo GEMINI_API_KEY."
-            exit 1
-          fi
           if [ -z "$PIXABAY_API_KEY" ]; then
-            echo "Falta cadastrar o segredo PIXABAY_API_KEY."
+            echo "Falta cadastrar o segredo PIXABAY_API_KEY em Settings > Secrets and variables > Actions."
             exit 1
           fi
 
-      - name: Gerar um vídeo
+      - name: Gerar vídeo com cenas existentes do Pixabay
         env:
           TEMA: ${{ inputs.tema }}
+          ROTEIRO: ${{ inputs.roteiro }}
+          TERMOS: ${{ inputs.termos }}
           MPT_HOME: ${{ github.workspace }}/mpt-data
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
           mkdir -p "$MPT_HOME"
@@ -58,25 +64,40 @@ jobs:
           [app]
           video_source = "pixabay"
           pixabay_api_keys = ["$PIXABAY_API_KEY"]
-          llm_provider = "gemini"
-          gemini_api_key = "$GEMINI_API_KEY"
-          gemini_model_name = "gemini-3.8-flash"
 
           [ui]
           subtitle_provider = "edge"
           voice_name = "pt-BR-AntonioNeural"
+          subtitle_enabled = true
+          subtitle_position = "bottom"
+          subtitle_display_mode = "word_by_word"
+          subtitle_animation = "pop_spring"
+          font_size = 58
+          stroke_width = 2
           EOF
 
-          TEMA="${TEMA:-Curiosidades surpreendentes sobre o oceano}"
-          echo "Iniciando geração de um vídeo sobre: $TEMA"
+          echo "Tema: $TEMA"
+          echo "Usando roteiro fornecido; nenhuma chamada ao Gemini será feita."
           mpt cli \
             --video-subject "$TEMA" \
+            --video-script "$ROTEIRO" \
+            --video-terms "$TERMOS" \
             --video-language "pt-BR" \
             --video-aspect "9:16" \
             --video-source "pixabay" \
             --video-count 1 \
+            --video-clip-duration 4 \
+            --video-fit-mode cover \
             --voice-name "pt-BR-AntonioNeural" \
+            --subtitle-enabled \
+            --subtitle-position bottom \
+            --subtitle-display-mode word_by_word \
+            --subtitle-animation pop_spring \
+            --font-size 58 \
+            --stroke-width 2 \
             --bgm-type random \
+            --bgm-volume 0.10 \
+            --n-threads 2 \
             --stop-at video
 
       - name: Disponibilizar vídeo para baixar
@@ -84,6 +105,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: video-de-curiosidade
-          path: mpt-data/storage/tasks/**/final-*.mp4
+          path: |
+            mpt-data/storage/tasks/**/*.mp4
+            mpt-data/storage/tasks/**/*.srt
           if-no-files-found: warn
           retention-days: 7
