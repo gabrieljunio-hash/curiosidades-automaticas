@@ -50,18 +50,6 @@ jobs:
             echo "Falta cadastrar o segredo PIXABAY_API_KEY."
             exit 1
           fi
-          mkdir -p "$HOME/.local/share/MoneyPrinterTurbo"
-          cat > "$HOME/.local/share/MoneyPrinterTurbo/config.toml" <<EOF
-          [app]
-          video_source = "pixabay"
-          pixabay_api_keys = ["$PIXABAY_API_KEY"]
-          llm_provider = "gemini"
-          gemini_api_key = "$GEMINI_API_KEY"
-
-          [ui]
-          subtitle_provider = "edge"
-          voice_name = "pt-BR-AntonioNeural"
-          EOF
 
       - name: Gerar vídeos
         env:
