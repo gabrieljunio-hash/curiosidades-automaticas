@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -8,19 +9,21 @@ pexels = os.environ.get("PEXELS_API_KEY", "").strip()
 if not gemini or not pexels:
     sys.exit("Faltam os Secrets GEMINI_API_KEY e/ou PEXELS_API_KEY. Consulte o README.")
 
-topics = [line.strip() for line in os.environ.get("TEMAS", "").splitlines() if line.strip()]
+raw_topics = os.environ.get("TEMAS", "")
+topics = [part.strip() for part in re.split(r"[;\\n]+", raw_topics) if part.strip()]
 if len(topics) != 5:
-    sys.exit(f"Informe exatamente 5 temas diferentes, um por linha. Recebi {len(topics)}.")
+    sys.exit(f"Informe exatamente 5 temas, separados por ponto e vírgula. Recebi {len(topics)}.")
 if len({topic.casefold() for topic in topics}) != 5:
     sys.exit("Os cinco temas precisam ser diferentes.")
 
-# As chaves vêm dos Secrets do GitHub e nunca são gravadas no repositório.
-config = f'''log_level = "INFO"
-video_source = "pexels"
-pexels_api_keys = ["{pexels}"]
-llm_provider = "gemini"
-gemini_api_key = "{gemini}"
-'''
+# JSON strings também são strings TOML válidas e escapam aspas e barras corretamente.
+config = (
+    'log_level = "INFO"\\n'
+    'video_source = "pexels"\\n'
+    f"pexels_api_keys = [{json.dumps(pexels)}]\\n"
+    'llm_provider = "gemini"\\n'
+    f"gemini_api_key = {json.dumps(gemini)}\\n"
+)
 Path("config.toml").write_text(config, encoding="utf-8")
 
 tasks = [{"video_subject": topic, "video_language": "pt-BR", "paragraph_number": 4} for topic in topics]
