@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   gerar:
+    env:
+      MPT_HOME: ${{ github.workspace }}/.mpt
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
@@ -71,6 +73,6 @@ jobs:
         with:
           name: videos-de-curiosidades
           path: |
-            storage/tasks/
+            .mpt/storage/tasks/
           if-no-files-found: warn
           retention-days: 7
