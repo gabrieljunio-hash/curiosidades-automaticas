@@ -10,7 +10,7 @@ if not gemini or not pexels:
     sys.exit("Faltam os Secrets GEMINI_API_KEY e/ou PEXELS_API_KEY. Consulte o README.")
 
 raw_topics = os.environ.get("TEMAS", "")
-topics = [part.strip() for part in re.split(r"[;\\n]+", raw_topics) if part.strip()]
+topics = [part.strip() for part in re.split(r"[;\n]+", raw_topics) if part.strip()]
 if len(topics) != 5:
     sys.exit(f"Informe exatamente 5 temas, separados por ponto e vírgula. Recebi {len(topics)}.")
 if len({topic.casefold() for topic in topics}) != 5:
@@ -18,11 +18,11 @@ if len({topic.casefold() for topic in topics}) != 5:
 
 # JSON strings também são strings TOML válidas e escapam aspas e barras corretamente.
 config = (
-    'log_level = "INFO"\\n'
-    'video_source = "pexels"\\n'
-    f"pexels_api_keys = [{json.dumps(pexels)}]\\n"
-    'llm_provider = "gemini"\\n'
-    f"gemini_api_key = {json.dumps(gemini)}\\n"
+    'log_level = "INFO"\n'
+    'video_source = "pexels"\n'
+    f"pexels_api_keys = [{json.dumps(pexels)}]\n"
+    'llm_provider = "gemini"\n'
+    f"gemini_api_key = {json.dumps(gemini)}\n"
 )
 Path("config.toml").write_text(config, encoding="utf-8")
 
