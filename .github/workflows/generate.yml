@@ -1,4 +1,4 @@
-name: Gerar 5 vídeos de curiosidades
+name: Gerar 5 vídeos (Gemini + Pixabay)
 
 on:
   workflow_dispatch:
@@ -79,7 +79,7 @@ jobs:
           if len(temas) > 5:
               temas = temas[:5]
           for i, tema in enumerate(temas, 1):
-              print(f"\\n===== Vídeo {i}/{len(temas)}: {tema} =====", flush=True)
+              print(f"\n===== Vídeo {i}/{len(temas)}: {tema} =====", flush=True)
               cmd = [
                   "mpt", "cli",
                   "--video-subject", tema,
