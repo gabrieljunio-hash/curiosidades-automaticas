@@ -18,7 +18,7 @@ jobs:
       - name: Baixar projeto e histórico de temas
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ github.token }}
 
       - name: Preparar Python
         uses: actions/setup-python@v5
@@ -37,7 +37,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python - <<'PY'
-          import json, os, urllib.request, urllib.error
+          import json, os, time, urllib.request, urllib.error
           from pathlib import Path
 
           key = os.environ.get("GEMINI_API_KEY", "")
@@ -61,12 +61,31 @@ jobs:
               data=json.dumps(body).encode(),
               headers={"Content-Type":"application/json","x-goog-api-key":key},
               method="POST")
-          try:
-              with urllib.request.urlopen(req, timeout=90) as response:
-                  data=json.loads(response.read())
-          except urllib.error.HTTPError as e:
-              detail=e.read().decode(errors="replace")
-              raise SystemExit(f"Gemini API respondeu HTTP {e.code}: {detail[:1200]}")
+          data = None
+          for attempt in range(1, 7):
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as response:
+                      data=json.loads(response.read())
+                  break
+              except urllib.error.HTTPError as e:
+                  detail=e.read().decode(errors="replace")
+                  if e.code in (500, 502, 503, 504) and attempt < 6:
+                      wait = min(20 * (2 ** (attempt - 1)), 180)
+                      print(f"Gemini temporariamente indisponível (HTTP {e.code}). Tentativa {attempt}/6; nova tentativa em {wait}s.")
+                      time.sleep(wait)
+                      continue
+                  raise SystemExit(f"Gemini API respondeu HTTP {e.code}: {detail[:1200]}")
+              except (urllib.error.URLError, TimeoutError) as e:
+                  if attempt < 6:
+                      wait = min(20 * (2 ** (attempt - 1)), 180)
+                      print(f"Falha temporária de conexão com Gemini: {e}. Tentativa {attempt}/6 em {wait}s.")
+                      time.sleep(wait)
+                      continue
+                  raise SystemExit(f"Gemini indisponível após 6 tentativas: {e}")
+          if data is None:
+              raise SystemExit("Gemini não respondeu após 6 tentativas.")
+          if not data.get("candidates"):
+              raise SystemExit(f"Gemini não retornou candidatos: {json.dumps(data)[:1200]}")
           text=data["candidates"][0]["content"]["parts"][0]["text"]
           result=json.loads(text)
           for field in ("tema","gancho_escolhido","roteiro","termos"):
