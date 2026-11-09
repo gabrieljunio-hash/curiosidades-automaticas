@@ -60,6 +60,7 @@ jobs:
           pixabay_api_keys = ["$PIXABAY_API_KEY"]
           llm_provider = "gemini"
           gemini_api_key = "$GEMINI_API_KEY"
+          gemini_model_name = "gemini-3.8-flash"
 
           [ui]
           subtitle_provider = "edge"
